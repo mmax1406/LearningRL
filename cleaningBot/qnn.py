@@ -16,9 +16,12 @@ class ReplayBuffer:
         self.done = np.zeros((capacity,), dtype=np.float32)
         self.capacity, self.count = capacity, 0
 
+    def __len__(self):
+        return self.count
+
     def add(self, s, a, r, sp, done):
         idx = self.count % self.capacity
-        self.s[idx], self.a[idx], self.r[idx], self.sp[idx], self.done[idx] = s, a, r, sp, float(done)
+        self.s[idx], self.a[idx], self.r[idx], self.sp[idx], self.done[idx] = s.reshape(-1), a, r, sp.reshape(-1), float(done)
         self.count += 1
 
     def sample(self, batch_size):
@@ -62,9 +65,10 @@ class DQNTrainer:
 
     def train(self):
         rewards = []
+        bestReward = 0
         for ep in range(1, self.n_episodes + 1):
             s, total_reward = self.env.reset(), 0
-            for _ in range(self.max_steps):
+            for stepCount in range(self.max_steps):
                 if random.random() < self.epsilon:
                     a = random.randint(0, self.n_actions - 1)
                 else:
@@ -72,7 +76,7 @@ class DQNTrainer:
                         qs = self.qnet(torch.from_numpy(s).unsqueeze(0).to(DEVICE))
                         a = int(torch.argmax(qs, dim=1).item())
 
-                sp, r, done, _ = self.env.step(a)
+                sp, r, done, _ = self.env.step(a, stepCount == self.max_steps-1)
                 self.buffer.add(s, a, r, sp, done)
                 total_reward += r
 
@@ -96,14 +100,25 @@ class DQNTrainer:
                 self.q_target.load_state_dict(self.qnet.state_dict())
 
             rewards.append(total_reward)
+
             print(f"Episode {ep} | Reward={total_reward:.2f} | Eps={self.epsilon:.3f}")
+
+            # --- save weights ---
+            if total_reward > bestReward:
+                torch.save(self.qnet.state_dict(), f"weights.pth")
+                bestReward = total_reward
+
         return rewards
 
 class DQNAgent:
-    def __init__(self, qnet):
-        self.qnet = qnet
+    def __init__(self):
+        model = QNet(402, 4).to(DEVICE)
+        model.load_state_dict(torch.load("weights.pth"))
+        model.eval()  # disable dropout/batchnorm if any
+        self.qnet = model
 
     def act(self, state):
+        state = state.reshape(-1)  # flatten just in case
         with torch.no_grad():
             qs = self.qnet(torch.from_numpy(state).unsqueeze(0).to(DEVICE))
         return int(torch.argmax(qs, dim=1).item())
