@@ -7,15 +7,18 @@ class GridCleanEnv:
         self.n_rows = gridSize
         self.n_cols = gridSize
         self.createMap()
-        self.start_r = np.random.random_integers(2, self.n_rows-1)
-        self.start_c = np.random.random_integers(2, self.n_cols-1)
-        self.start_grid = self.grid
-        while(self.grid[self.start_r, self.start_c] == 1):
-            self.start_r = np.random.random_integers(2, self.n_rows-1)
-            self.start_c = np.random.random_integers(2, self.n_cols-1)
-        self.r, self.c = self.start_r, self.start_c
+        self.start_grid = self.grid.copy()
+        self.generateValitStartState()
         self.state_dim = self.n_rows * self.n_cols + 2
         self.updateState()
+
+    def generateValitStartState(self):
+        self.start_r = np.random.random_integers(2, self.n_rows - 1)
+        self.start_c = np.random.random_integers(2, self.n_cols - 1)
+        while (self.start_grid[self.start_r, self.start_c] == 1):
+            self.start_r = np.random.random_integers(2, self.n_rows - 1)
+            self.start_c = np.random.random_integers(2, self.n_cols - 1)
+        self.r, self.c = self.start_r, self.start_c
 
     def updateState(self):
         self.state = np.concatenate((
@@ -39,8 +42,8 @@ class GridCleanEnv:
             self.grid[startX:(startX+sizeX), startY:(startY+sizeY)] = 1
 
     def reset(self):
-        self.r, self.c = self.start_r, self.start_c
-        self.grid = self.start_grid
+        self.generateValitStartState()
+        self.grid = self.start_grid.copy()
         self.updateState()
         return self.state.reshape(-1)
 
@@ -56,16 +59,17 @@ class GridCleanEnv:
         reward, done = -1.0, False #make a step
         # Case 1: hit a wall → episode ends
         if self.grid[nr, nc] == 1.0:
-            reward, done = -10.0, True
+            reward += -10.0
+            done = True
 
         # Case 2: episode ended by some external condition
-        if end_of_episode or done:  # <-- you need to define this flag in your loop
-            reward = np.sum(self.grid == 0.5)  # e.g. number of cleaned tiles
+        if end_of_episode or done:
+            reward += np.sum(self.grid == 0.5) * 3 # e.g. number of cleaned tiles
             done = True
 
         # Case 3: revisiting a cleaned tile
         if self.grid[nr, nc] == 0.5:
-            reward = -3.0
+            reward += -3.0
 
         self.r, self.c = nr, nc
         self.updateState()

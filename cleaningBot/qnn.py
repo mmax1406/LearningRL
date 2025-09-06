@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from visualize import *
 
 # Device
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,7 +50,7 @@ class QNet(nn.Module):
 
 class DQNTrainer:
     def __init__(self, env, gamma=0.95, alpha=1e-3, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.1,
-                 n_episodes=300, max_steps=50, target_update_freq=20, batch_size=32, buffer_capacity=10000):
+                 n_episodes=3000, max_steps=50, target_update_freq=25, batch_size=32, buffer_capacity=10000):
         self.env, self.gamma, self.alpha = env, gamma, alpha
         self.epsilon, self.epsilon_decay, self.min_epsilon = epsilon, epsilon_decay, min_epsilon
         self.n_episodes, self.max_steps = n_episodes, max_steps
@@ -65,9 +66,11 @@ class DQNTrainer:
 
     def train(self):
         rewards = []
-        bestReward = 0
+        bestReward = -1000000
         for ep in range(1, self.n_episodes + 1):
             s, total_reward = self.env.reset(), 0
+            ep_rewards = []
+            locations = []
             for stepCount in range(self.max_steps):
                 if random.random() < self.epsilon:
                     a = random.randint(0, self.n_actions - 1)
@@ -79,6 +82,8 @@ class DQNTrainer:
                 sp, r, done, _ = self.env.step(a, stepCount == self.max_steps-1)
                 self.buffer.add(s, a, r, sp, done)
                 total_reward += r
+                ep_rewards.append(r)
+                locations.append(sp[0:2])
 
                 if len(self.buffer) >= self.batch_size:
                     sb, ab, rb, spb, db = self.buffer.sample(self.batch_size)
@@ -104,7 +109,7 @@ class DQNTrainer:
             print(f"Episode {ep} | Reward={total_reward:.2f} | Eps={self.epsilon:.3f}")
 
             # --- save weights ---
-            if total_reward > bestReward:
+            if total_reward > bestReward and ep>300:
                 torch.save(self.qnet.state_dict(), f"weights.pth")
                 bestReward = total_reward
 

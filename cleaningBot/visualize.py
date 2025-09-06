@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import numpy as np
+import matplotlib
+matplotlib.use("TkAgg")
 
 def plot_rewards(rewards):
     plt.figure(figsize=(8,4))
@@ -9,7 +10,7 @@ def plot_rewards(rewards):
     plt.ylabel("Reward")
     plt.title("Training Rewards")
     plt.grid(True)
-    plt.show()
+    plt.show(block=False)
 
 def plotMap(env):
     grid = env.grid.copy()
@@ -17,7 +18,7 @@ def plotMap(env):
 
     mat = ax.matshow(np.logical_not(grid), cmap="gray")
     ax.set_title("Generated Map")
-    plt.show()
+    plt.show(block=False)
 
 def plot_paths(env, agent, max_steps=50):
     grid = env.grid.copy()
@@ -26,8 +27,8 @@ def plot_paths(env, agent, max_steps=50):
     ax.set_title("Agent Trajectory")
 
     s = env.reset()
-    positions_r = []
-    positions_c = []
+    x_vals = []
+    y_vals = []
     rewards = 0
 
     # Run agent and record trajectory
@@ -36,46 +37,22 @@ def plot_paths(env, agent, max_steps=50):
         a = agent.act(s)
         s, r, done, _ = env.step(a, stepCount == max_steps -1)
         # record position
-        positions_r.append(env.r)
-        positions_c.append(env.c)
+        x_vals.append(env.r)
+        y_vals.append(env.c)
         rewards += r
+        if done: break
 
-    ax.plot(positions_r, positions_c, '-r')
-    plt.show()
-    print(f"Reward={rewards:.2f}")
+    # create an empty line object that we will update
+    path_line, = ax.plot([], [], "-ob")
 
-def animate_agent(env, agent, max_steps=50):
-    grid = env.grid.copy()
-    fig, ax = plt.subplots()
-    mat = ax.matshow(np.logical_not(grid), cmap="gray")
-    trail, = ax.plot([], [], "r.", markersize=6)  # trail for past positions
-    agent_dot, = ax.plot([], [], "ro", markersize=12)
-    ax.set_title("Agent Trajectory")
-    plt.ion()  # turn on interactive mode
+    plt.ion()
     plt.show()
 
-    s = env.reset()
-    positions_r = []
-    positions_c = []
-
-    # Run agent and record trajectory
-    for stepCount in range(max_steps):
-        # Run a step
-        a = agent.act(s)
-        s, _, done, _ = env.step(a, stepCount == max_steps -1)
-        # record position
-        positions_r.append(env.r)
-        positions_c.append(env.c)
-
-        # update trail and agent dot
-        trail.set_data(positions_c, positions_r)
-        agent_dot.set_data(env.c, env.r)
-        # ax.plot(positions_r, positions_c,'-r')
-
-        # Pause for visulaiztion
+    # Animate the path
+    for stepCount in range(len(x_vals)):
+        path_line.set_data(x_vals[:stepCount + 1], y_vals[:stepCount + 1])
         plt.pause(0.5)
-        if done:
-            break
 
+    print(f"Reward={rewards:.2f}")
     plt.ioff()
     plt.show()

@@ -21,7 +21,8 @@ if __name__ == "__main__":
     # Recreate Env
     with open("env.pkl", "rb") as f:
         env = pickle.load(f)
-    # Test
+
+    # Plot
     # plotMap(env)
     # animate_agent(env, agent)
     plot_paths(env, agent)
