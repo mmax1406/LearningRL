@@ -49,8 +49,8 @@ class QNet(nn.Module):
         return self.net(x)
 
 class DQNTrainer:
-    def __init__(self, env, gamma=0.95, alpha=1e-3, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.1,
-                 n_episodes=3000, max_steps=50, target_update_freq=25, batch_size=32, buffer_capacity=10000):
+    def __init__(self, env, gamma=0.99, alpha=3e-4, epsilon=1.0, epsilon_decay=0.9995, min_epsilon=0.1,
+                 n_episodes=10000, max_steps=400, target_update_freq=20, batch_size=32, buffer_capacity=10000):
         self.env, self.gamma, self.alpha = env, gamma, alpha
         self.epsilon, self.epsilon_decay, self.min_epsilon = epsilon, epsilon_decay, min_epsilon
         self.n_episodes, self.max_steps = n_episodes, max_steps

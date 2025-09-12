@@ -56,20 +56,25 @@ class GridCleanEnv:
 
         self.grid[self.r, self.c] = 0.5
 
-        reward, done = -1.0, False #make a step
-        # Case 1: hit a wall → episode ends
+        reward, done = 0.0, False #make a step
+
+        # Case 1 clean new tile
+        if self.grid[nr, nc] == 0.0:
+            reward += 5.0
+
+        # Case 2: hit a wall → episode ends
         if self.grid[nr, nc] == 1.0:
-            reward += -10.0
+            reward += -20.0
             done = True
 
-        # Case 2: episode ended by some external condition
-        if end_of_episode or done:
-            reward += np.sum(self.grid == 0.5) * 3 # e.g. number of cleaned tiles
-            done = True
+        # # Case 2: episode ended by some external condition
+        # if end_of_episode or done:
+        #     reward += np.sum(self.grid == 0.5) * 3 # e.g. number of cleaned tiles
+        #     done = True
 
         # Case 3: revisiting a cleaned tile
         if self.grid[nr, nc] == 0.5:
-            reward += -3.0
+            reward += -2.0
 
         self.r, self.c = nr, nc
         self.updateState()

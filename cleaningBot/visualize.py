@@ -20,7 +20,7 @@ def plotMap(env):
     ax.set_title("Generated Map")
     plt.show(block=False)
 
-def plot_paths(env, agent, max_steps=50):
+def plot_paths(env, agent, max_steps=20*20):
     grid = env.grid.copy()
     fig, ax = plt.subplots()
     mat = ax.matshow(np.logical_not(grid), cmap="gray")
@@ -30,6 +30,7 @@ def plot_paths(env, agent, max_steps=50):
     x_vals = []
     y_vals = []
     rewards = 0
+    isDone = []
 
     # Run agent and record trajectory
     for stepCount in range(max_steps):
@@ -37,10 +38,12 @@ def plot_paths(env, agent, max_steps=50):
         a = agent.act(s)
         s, r, done, _ = env.step(a, stepCount == max_steps -1)
         # record position
-        x_vals.append(env.r)
-        y_vals.append(env.c)
+        isDone.append(done)
+        x_vals.append(env.c)
+        y_vals.append(env.r)
         rewards += r
-        if done: break
+        if done:
+            break
 
     # create an empty line object that we will update
     path_line, = ax.plot([], [], "-ob")
