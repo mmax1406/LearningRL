@@ -16,13 +16,12 @@ if __name__ == "__main__":
     rewards = trainer.train()
     plot_rewards(rewards)
 
-    # Load a model with the trained weights
-    agent = DQNAgent()
     # Recreate Env
     with open("env.pkl", "rb") as f:
         env = pickle.load(f)
 
+    # Load a model with the trained weights
+    agent = DQNAgent(env)
+
     # Plot
-    # plotMap(env)
-    # animate_agent(env, agent)
     plot_paths(env, agent)

@@ -1,2 +1,4 @@
 *.pkl
 cleaningBot/__pycache__/
+
+*.pth
