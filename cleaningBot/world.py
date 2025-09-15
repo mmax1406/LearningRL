@@ -7,6 +7,7 @@ class GridCleanEnv:
         self.n_rows = gridSize
         self.n_cols = gridSize
         self.createMap()
+        self.obstaclesMapStart = self.obstacles.copy()
         self.generateValidStartState()
         self.state_dim = (self.n_rows, self.n_cols, 3)  # n x n x 3
         self.updateState()
@@ -48,7 +49,9 @@ class GridCleanEnv:
         self.cleaned = np.zeros((self.n_rows, self.n_cols), dtype=np.float32)
 
     def reset(self):
-        self.createMap()
+        # self.createMap()
+        self.obstacles = self.obstaclesMapStart.copy()
+        self.cleaned = np.zeros((self.n_rows, self.n_cols), dtype=np.float32)
         self.generateValidStartState()
         self.updateState()
         return self.state.copy()
@@ -67,16 +70,16 @@ class GridCleanEnv:
 
         # Case 1: move into free uncleaned space
         if self.obstacles[nr, nc] == 0 and self.cleaned[nr, nc] == 0:
-            reward += 5.0
+            reward += 0.25
 
         # Case 2: hit obstacle
         if self.obstacles[nr, nc] == 1:
-            reward += -20.0
+            reward += -1
             done = True
 
         # Case 3: revisiting a cleaned tile
         if self.cleaned[nr, nc] == 1 and self.obstacles[nr, nc] == 0:
-            reward += -2.0
+            reward += -0.1
 
         self.r, self.c = nr, nc
         self.updateState()

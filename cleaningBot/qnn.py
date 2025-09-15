@@ -60,8 +60,8 @@ class QNet(nn.Module):
 
 
 class DQNTrainer:
-    def __init__(self, env, gamma=0.99, alpha=3e-4, epsilon=1.0, epsilon_decay=0.9995, min_epsilon=0.1,
-                 n_episodes=3000, max_steps=400, target_update_freq=20, batch_size=32, buffer_capacity=10000, warmup = 300):
+    def __init__(self, env, gamma=0.99, alpha=3e-4, epsilon=1.0, epsilon_decay=0.9995, min_epsilon=0.3,
+                 n_episodes=10000, max_steps=400, target_update_freq=20, batch_size=32, buffer_capacity=10000, warmup = 300):
         self.env, self.gamma, self.alpha = env, gamma, alpha
         self.epsilon, self.epsilon_decay, self.min_epsilon = epsilon, epsilon_decay, min_epsilon
         self.n_episodes, self.max_steps = n_episodes, max_steps
@@ -102,7 +102,10 @@ class DQNTrainer:
                     sb, ab, rb, spb, db = self.buffer.sample(self.batch_size)
                     q_pred = self.qnet(sb).gather(1, ab)
                     with torch.no_grad():
-                        q_next = self.q_target(spb).max(1, keepdim=True)[0]
+                        # Online net chooses the best action
+                        next_actions = self.qnet(spb).argmax(1, keepdim=True)
+                        # Target net evaluates it
+                        q_next = self.q_target(spb).gather(1, next_actions)
                         target = rb + self.gamma * q_next * (1.0 - db)
                     loss = self.loss_fn(q_pred, target)
                     self.optimizer.zero_grad()
