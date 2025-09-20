@@ -2,13 +2,14 @@ from visualize import *
 from qnn import *
 from world import *
 from A2C import *
+from PPO import *
 import pickle
 
 if __name__ == "__main__":
 
-    test = 0
+    train = 1
 
-    if not test:
+    if train:
         env = GridCleanEnv(20, 5, 6)
         plotMap(env)
         # Save the env
@@ -17,7 +18,8 @@ if __name__ == "__main__":
 
         # Train model and save the weights
         # trainer = DQNTrainer(env)
-        trainer = A2CTrainer(env)
+        # trainer = A2CTrainer(env)
+        trainer = PPOTrainer(env)
 
         # plot the rewards
         rewards = trainer.train()

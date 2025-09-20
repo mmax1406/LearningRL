@@ -1,0 +1,2 @@
+- A2C dosent have batch size.
+- PPO understand whats the training procedure

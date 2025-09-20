@@ -135,3 +135,31 @@ class A2C_Agent:
             action = torch.argmax(logits, dim=1).item()
 
         return action
+
+
+class PPO_Agent:
+    def __init__(self, model_path=None, input_channels=3, n_actions=4):
+        self.model = ActorCritic(input_channels, n_actions).to(DEVICE)
+        if model_path is not None:
+            self.model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        self.model.eval()  # no dropout/bn in eval mode
+
+    def act(self, state):
+        """
+        Pick the greedy action for evaluation.
+        state: numpy array (H, W, C) or (C, H, W)
+        returns: int (action index)
+        """
+        s = torch.from_numpy(state).float().to(DEVICE)
+
+        # Fix dimensions: (H,W,C) -> (C,H,W)
+        if s.dim() == 3 and s.shape[0] not in [1, 3]:
+            s = s.permute(2, 0, 1)
+
+        s = s.unsqueeze(0)  # add batch dimension
+
+        with torch.no_grad():
+            logits, _ = self.model(s)
+            action = torch.argmax(logits, dim=1).item()
+
+        return action
