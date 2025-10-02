@@ -113,7 +113,7 @@ class PPOTrainer:
         """
         state: numpy array (C,H,W) or (H,W,C)
         """
-        s = torch.tensor(state, dtype=torch.float32)
+        s = torch.tensor(state, dtype=torch.float32).to(DEVICE)
 
         # fix dimensions if needed: (H,W,C) -> (C,H,W)
         if s.dim() == 3 and s.shape[0] not in [1, 3]:
@@ -175,19 +175,20 @@ class PPOTrainer:
         self.buffer.clear()
         return total_reward
 
-    def train(self):
+    def train(self, n_episodes=2000, max_steps=400):
         total_reward_out = []
-        for ep in range(500):
+        for ep in range(n_episodes):
             state = self.env.reset()
             done = False
 
-            while not done:
+            for step in range(max_steps):
                 action = self.select_action(state)
                 next_state, reward, done, _ = self.env.step(action)
                 self.store_outcome(reward, done)
                 state = next_state
+                if done: break
 
-            total_reward = self.train()
+            total_reward = self.update()
             total_reward_out.append(total_reward)
             print(f"Episode {ep}, total reward = {total_reward}")
         return total_reward_out
