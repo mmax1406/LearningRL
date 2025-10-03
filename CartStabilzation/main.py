@@ -8,6 +8,9 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 # ---------- Custom Env with Domain Randomization ----------
 class RandomizedCartPole(gym.Wrapper):
@@ -34,7 +37,7 @@ def optimize_ppo(trial):
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 3e-3, log=True)
     clip_range = trial.suggest_float("clip_range", 0.1, 0.4)
     gae_lambda = trial.suggest_float("gae_lambda", 0.8, 1.0)
-    ent_coef = trial.suggest_float("ent_coef", 0.0, 0.1, log=True)
+    ent_coef = trial.suggest_float("ent_coef", 0.01, 0.1, log=True)
     vf_coef = trial.suggest_float("vf_coef", 0.1, 1.0)
     max_grad_norm = trial.suggest_categorical("max_grad_norm", [0.3, 0.5, 0.7, 1.0])
 
@@ -69,7 +72,7 @@ def optimize_ppo(trial):
         policy_kwargs=policy_kwargs,
         verbose=0
     )
-    model.learn(total_timesteps=50_000)
+    model.learn(total_timesteps=30_000)
 
     # --- Evaluate ---
     mean_reward, _ = evaluate_policy(model, env, n_eval_episodes=10, deterministic=True)
