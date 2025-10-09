@@ -1,4 +1,4 @@
 *.pkl
 cleaningBot/__pycache__/
-
+*.zip
 *.pth

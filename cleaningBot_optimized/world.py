@@ -101,14 +101,14 @@ class GridCleanEnvGym(gym.Env):
         self.cleaned[self.r, self.c] = 1.0
 
         # Move logic
-        if self.obstacles[nr, nc] == 1:      # hit obstacle
-            reward = -10
-            done = True
+        if self.obstacles[nr, nc] == 1:
+            nr, nc = self.r, self.c
+            reward -= 0.05  # small time waste penalty
         elif self.cleaned[nr, nc] == 1:      # revisiting cleaned tile
-            reward = -3
+            reward = -0.3
             self.r, self.c = nr, nc
         else:                                # free uncleaned space
-            reward = 1
+            reward = 0.1
             self.r, self.c = nr, nc
 
         # End if too many steps were made
@@ -125,6 +125,9 @@ class GridCleanEnvGym(gym.Env):
         repeat_count = self.position_history.count((self.r, self.c))
         if repeat_count >= self.max_repeats:
             done = True  # terminate episode
+
+        if done:
+            reward += np.sum(self.cleaned) / (self.grid_size ** 2 - np.sum(self.obstacles))
 
         return self.state.copy(), reward, done, truncated, {}
 

@@ -117,7 +117,7 @@ def optimize_ppo_cnn(trial):
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="maximize")
-    study.optimize(optimize_ppo_cnn, n_trials=20, n_jobs=1)
+    study.optimize(optimize_ppo_cnn, n_trials=30, n_jobs=1)
 
     df = study.trials_dataframe()
     df.to_csv("ppo_gridclean_optuna_results.csv", index=False)
