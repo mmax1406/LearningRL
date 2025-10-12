@@ -1,15 +1,12 @@
 from intercept_env import env
-import numpy as np
 
-environment = env(N_adversaries=2, M_good=2, render_mode="human")
-observations = environment.reset()
+environment = env(N_adversaries=3, M_good=5, width_ratio=3.0)
+observations, info = environment.reset()
 
-for step in range(100):
-    # random actions
+for step in range(200):
     actions = {agent: environment.action_spaces[agent].sample() for agent in environment.agents}
     obs, rewards, term, trunc, infos = environment.step(actions)
-    if not any(environment.active.values()):
-        print("All agents removed — game over")
+    environment.render()
+    if not environment.agents:
+        print("Game over")
         break
-
-environment.close()
