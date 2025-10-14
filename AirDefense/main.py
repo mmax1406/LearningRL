@@ -1,8 +1,5 @@
-import random
-import os
-from train_good import train_good  # your good agent training function
-from train_adversary import train_adversary  # your adversary training function
-
+from sharedPolicyWrapper import SharedPolicyWrapper
+from intercept_env import env
 # ---------------- PARAMETERS ----------------
 N_ITERATIONS = 1
 MIN_GOOD, MAX_GOOD = 5, 10
@@ -15,25 +12,18 @@ ADVERSARY_MODEL_PATH = "adversary_policy.zip"
 # ---------------- MAIN LOOP ----------------
 for i in range(N_ITERATIONS):
     print(f"\n==== Iteration {i + 1}/{N_ITERATIONS} ====")
+    multiEnv = SharedPolicyWrapper(env(N_adversaries=3, M_good=5, width_ratio=3.0))
+    observations, info = multiEnv.reset()
 
-    # Randomize number of agents
-    N_good = random.randint(MIN_GOOD, MAX_GOOD)
-    N_adv = random.randint(MIN_ADV, MAX_ADV)
-    print(f"Training GOOD agents with {N_good} interceptors vs {N_adv} adversaries")
 
-    # Train good agents
-    good_model_path = train_good(N_good=N_good, N_adv=N_adv)
-    # good_model_path = train_good(N_good=N_good, N_adv=N_adv, opponent_model_path=ADVERSARY_MODEL_PATH)
-    print(f"✅ Saved good model: {good_model_path}")
-
-    # Randomize again
-    N_good = random.randint(MIN_GOOD, MAX_GOOD)
-    N_adv = random.randint(MIN_ADV, MAX_ADV)
-    print(f"Training ADVERSARY agents with {N_adv} adversaries vs {N_good} interceptors")
-
-    # Train adversary agents
-    adv_model_path = train_adversary(N_adv=N_adv, N_good=N_good)
-    # adv_model_path = train_adversary(N_adv=N_adv, N_good=N_good, opponent_model_path=GOOD_MODEL_PATH)
-    print(f"✅ Saved adversary model: {adv_model_path}")
+    # # Train good agents
+    # good_model_path = train_good(N_good=N_good, N_adv=N_adv)
+    # # good_model_path = train_good(N_good=N_good, N_adv=N_adv, opponent_model_path=ADVERSARY_MODEL_PATH)
+    # print(f"✅ Saved good model: {good_model_path}")
+    #
+    # # Train adversary agents
+    # adv_model_path = train_adversary(N_adv=N_adv, N_good=N_good)
+    # # adv_model_path = train_adversary(N_adv=N_adv, N_good=N_good, opponent_model_path=GOOD_MODEL_PATH)
+    # print(f"✅ Saved adversary model: {adv_model_path}")
 
 print("\n🎉 Curriculum training completed!")

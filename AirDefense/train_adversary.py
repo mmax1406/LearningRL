@@ -49,7 +49,7 @@ def optimize_ppo(trial,N_good=2, N_adv=2):
     n_steps = trial.suggest_categorical("n_steps", [128, 256, 512])
     batch_size = trial.suggest_categorical("batch_size", [64, 128, 256])
 
-    env = DummyVecEnv([make_env(N_good, N_adv)])
+    env = DummyVecEnv([lambda: make_env(N_good, N_adv)])
     model = PPO("MlpPolicy", env,
                 learning_rate=lr, gamma=gamma,
                 n_steps=n_steps, batch_size=batch_size,
@@ -69,9 +69,9 @@ def train_adversary(N_good=2, N_adv=2):
     print("Best hyperparameters:", study.best_params)
 
     # Train final model using best params
-    vec_env = SubprocVecEnv([make_env for _ in range(4)])
+    vec_env = SubprocVecEnv([lambda: make_env for _ in range(4)])
     model = PPO("MlpPolicy", vec_env, verbose=1, **study.best_params)
-    model.learn(total_timesteps=1_000_000)
+    model.learn(total_timesteps=200_000)
     model.save(ADVERSARY_MODEL_PATH)
     print("✅ Saved adversary model to:", ADVERSARY_MODEL_PATH)
 

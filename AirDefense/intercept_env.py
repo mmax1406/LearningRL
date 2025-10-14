@@ -1,6 +1,7 @@
 import numpy as np
 import gymnasium as gym
 from pettingzoo import ParallelEnv
+import supersuit as ss
 
 class PursuitEvasionEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "intercept_v2"}
@@ -11,10 +12,11 @@ class PursuitEvasionEnv(ParallelEnv):
         self.agents = [f"adversary_{i}" for i in range(N_adversaries)] + [
             f"good_{i}" for i in range(M_good)
         ]
+        self.possible_agents = self.agents.copy()
         self.pos = {}
         self.vel = {}
         self.active = {a: True for a in self.agents}
-        self.agent_radius = 0.03
+        self.agent_radius = 0.04
         self.width_ratio = width_ratio
         self.render_mode = render_mode
         self.viewer = None
@@ -28,7 +30,7 @@ class PursuitEvasionEnv(ParallelEnv):
             **{
                 f"adversary_{i}": gym.spaces.Box(
                     low=np.array([-1.0, -1.0]),
-                    high=np.array([0.0, 1.0]),
+                    high=np.array([1.0, 1.0]),
                     dtype=np.float32,
                 )
                 for i in range(N_adversaries)
@@ -136,7 +138,7 @@ class PursuitEvasionEnv(ParallelEnv):
             self._get_obs(),
             rewards,
             terminations,
-            {a: False for a in self.agents},  # truncations
+            {a: self.active[a] for a in self.agents},  # truncations
             {a: {} for a in self.agents},     # infos
         )
 
