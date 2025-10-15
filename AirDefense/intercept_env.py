@@ -3,6 +3,8 @@ import gymnasium as gym
 from pettingzoo import ParallelEnv
 import supersuit as ss
 
+# Main enviorment script
+
 class PursuitEvasionEnv(ParallelEnv):
     metadata = {"render_modes": ["human"], "name": "intercept_v2"}
 

@@ -1,6 +1,9 @@
 import numpy as np
 import gymnasium as gym
 
+# Create a single enviorment that outputs in the dim of the number of agents
+
+
 class SharedPolicyWrapper(gym.Env):
     def __init__(self, pettingzoo_env):
         super().__init__()
@@ -30,11 +33,17 @@ class SharedPolicyWrapper(gym.Env):
 
         # Check if any agents are done or destroyed
         done = all(terms.values()) or len(self.env.agents) == 0
+
+        # Handle finished case (no remaining agents)
+        if len(next_obs) == 0 or done:
+            # Return dummy obs of correct shape
+            dummy_obs = np.zeros((1,16)) # same shape as actions or previous obs
+            reward = np.array([rewards.get(a, 0.0) for a in self.agents])
+            infos["terminated"] = True
+            return dummy_obs, reward, True, infos
+
         obs = np.stack([next_obs[a] for a in self.agents if truncs[a]])
         reward = np.array([rewards[a] for a in self.agents])  # shared
-
-        if done:
-            print("")
 
         # I also need to return good & Bad to know who to train
         return obs, reward, done, infos

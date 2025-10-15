@@ -1,133 +1,199 @@
 import os
-import numpy as np
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.evaluation import evaluate_policy
-from intercept_env import PursuitEvasionEnv
 import gymnasium as gym
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions import Normal
+import optuna
+from collections import deque
 
-ADVERSARY_MODEL_PATH = "adversary_policy.zip"
-GOOD_MODEL_PATH = "good_policy.zip"
+# ----------------------------------------------------------
+# CONFIG
+# ----------------------------------------------------------
+ADVERSARY_MODEL_PATH = "adversary_policy.pt"
+TRAINED_GOOD_PATH = "good_policy.pt"
+TOTAL_TIMESTEPS = 200_000
+BATCH_SIZE = 512
+ROLLOUT_STEPS = 2048
+GAMMA = 0.99
+LAMBDA = 0.95
+CLIP_EPS = 0.2
+UPDATE_EPOCHS = 4
+ENTROPY_COEF = 0.01
+VALUE_COEF = 0.5
+EVAL_FREQ = 5000
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class SharedGoodAgentsEnv(gym.Env):
-    """
-    Wraps your multi-agent environment to make it compatible with Stable Baselines3 PPO.
-    All 'good' agents share one policy network.
-    Adversaries act randomly or using a preloaded model.
-    """
-    def __init__(self, base_env, good_model=None):
+# ----------------------------------------------------------
+# PPO Actor-Critic Network
+# ----------------------------------------------------------
+class ActorCritic(nn.Module):
+    def __init__(self, obs_dim, act_dim):
         super().__init__()
-        self.base_env = base_env
-        self.good_model = good_model
-        self.agents = base_env.agents
-        self.good_agents = [a for a in self.agents if "good" in a]
-        self.adv_agents = [a for a in self.agents if "adversary" in a]
+        self.actor = nn.Sequential(
+            nn.Linear(obs_dim, 128), nn.ReLU(),
+            nn.Linear(128, 128), nn.ReLU(),
+            nn.Linear(128, act_dim)
+        )
+        self.critic = nn.Sequential(
+            nn.Linear(obs_dim, 128), nn.ReLU(),
+            nn.Linear(128, 128), nn.ReLU(),
+            nn.Linear(128, 1)
+        )
 
-        obs_sample = self.base_env._get_obs()[self.agents[0]]
-        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=obs_sample.shape, dtype=np.float32)
-        self.action_space = gym.spaces.Discrete(base_env.action_space(self.agents[0]).n)
+    def act(self, obs):
+        mean = self.actor(obs)
+        dist = Normal(mean, torch.ones_like(mean) * 0.1)
+        action = dist.sample()
+        log_prob = dist.log_prob(action).sum(dim=-1)
+        return action.clamp(-1, 1), log_prob
 
-    def reset(self):
-        obs = self.base_env.reset()
-        self.current_obs = obs
-        # Return observation of first good agent (shared policy)
-        return obs[self.good_agents[0]]
+    def evaluate(self, obs, actions):
+        mean = self.actor(obs)
+        dist = Normal(mean, torch.ones_like(mean) * 0.1)
+        log_prob = dist.log_prob(actions).sum(dim=-1)
+        entropy = dist.entropy().sum(dim=-1)
+        value = self.critic(obs).squeeze(-1)
+        return log_prob, entropy, value
 
-    def step(self, action):
-        # Step all good agents using same policy action
-        actions = {}
-        for agent in self.good_agents:
-            actions[agent] = action
 
-        # Adversaries: random or fixed model
-        for agent in self.adv_agents:
-            obs = self.current_obs[agent].reshape(1, -1)
-            if self.good_model:
-                act, _ = self.good_model.predict(obs, deterministic=True)
-                actions[agent] = act[0]
-            else:
-                actions[agent] = self.base_env.action_space(agent).sample()
+# ----------------------------------------------------------
+# Helper: Compute GAE
+# ----------------------------------------------------------
+def compute_gae(rewards, values, dones, gamma=GAMMA, lam=LAMBDA):
+    advantages = []
+    gae = 0
+    next_value = 0
+    for step in reversed(range(len(rewards))):
+        delta = rewards[step] + gamma * next_value * (1 - dones[step]) - values[step]
+        gae = delta + gamma * lam * (1 - dones[step]) * gae
+        advantages.insert(0, gae)
+        next_value = values[step]
+    returns = [adv + val for adv, val in zip(advantages, values)]
+    return torch.tensor(advantages), torch.tensor(returns)
 
-        # Step base env
-        obs, rewards, dones, truncs, infos = self.base_env.step(actions)
-        self.current_obs = obs
 
-        # Aggregate rewards of all good agents
-        total_reward = np.mean([rewards[a] for a in self.good_agents])
-        done = all(dones.values())
-        trunc = any(truncs.values())
+# ----------------------------------------------------------
+# PPO Training Loop (Good Agent)
+# ----------------------------------------------------------
+def train_good_agent(trial=None):
+    # Hyperparameters to tune
+    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True) if trial else 3e-4
+    entropy_coef = trial.suggest_float("entropy_coef", 0.001, 0.05, log=True) if trial else ENTROPY_COEF
+    value_coef = trial.suggest_float("value_coef", 0.1, 1.0) if trial else VALUE_COEF
 
-        return obs[self.good_agents[0]], total_reward, done, trunc, {}
+    from intercept_env import env
+    environment = env(N_adversaries=3, M_good=5, width_ratio=3.0)
 
-# ---------------------------------------------------------
-# Helper: Create training environment
-# ---------------------------------------------------------
-def make_env(N_good=3, N_adv=2, width_ratio=5.0):
-    """
-    Returns a PursuitEvasionEnv instance.
-    Adversaries use pretrained weights if available, otherwise random.
-    """
-    env = PursuitEvasionEnv(N_adversaries=N_adv, M_good=N_good, width_ratio=width_ratio)
+    obs_dict, _ = environment.reset()
+    good_agents = [a for a in environment.agents if "good" in a]
+    adv_agents = [a for a in environment.agents if "adversary" in a]
 
-    # Load adversary model if available
+    obs_dim = len(obs_dict[good_agents[0]])
+    act_dim = environment.action_space(good_agents[0]).shape[0]
+
+    policy = ActorCritic(obs_dim, act_dim).to(DEVICE)
+    optimizer = optim.Adam(policy.parameters(), lr=lr)
+
+    # Load adversary if exists
+    adv_policy = None
     if os.path.exists(ADVERSARY_MODEL_PATH):
-        print("✅ Loading adversary model as opponents...")
-        adv_model = PPO.load(ADVERSARY_MODEL_PATH)
-
-        # Override env.step() to use adversary policy
-        original_step = env.step
-
-        def wrapped_step(actions):
-            obs = env._get_obs()
-            # Add adversary actions from model
-            for agent in env.agents:
-                if "adversary" in agent and agent not in actions:
-                    obs_vec = obs[agent].reshape(1, -1)
-                    act, _ = adv_model.predict(obs_vec, deterministic=True)
-                    actions[agent] = act[0]
-            return original_step(actions)
-
-        env.step = wrapped_step
+        adv_policy = ActorCritic(obs_dim, act_dim).to(DEVICE)
+        adv_policy.load_state_dict(torch.load(ADVERSARY_MODEL_PATH))
+        adv_policy.eval()
+        print("✅ Loaded adversary policy")
     else:
-        print("⚠️ No adversary model found, using random actions instead.")
+        print("⚠️ No adversary model found, using random actions")
 
-        original_step = env.step
+    ep_rewards = deque(maxlen=10)
 
-        def wrapped_step(actions):
-            obs = env._get_obs()
-            for agent in env.agents:
-                if "adversary" in agent and agent not in actions:
-                    # Random adversary actions
-                    low, high = env.action_spaces[agent].low, env.action_spaces[agent].high
-                    actions[agent] = np.random.uniform(low, high)
-            return original_step(actions)
+    for step in range(1, TOTAL_TIMESTEPS + 1):
+        rollout = []
+        obs_dict, _ = environment.reset()
 
-        env.step = wrapped_step
+        for _ in range(ROLLOUT_STEPS):
+            actions = {}
+            step_data = []
+            for a in good_agents:
+                obs = torch.tensor(obs_dict[a], dtype=torch.float32, device=DEVICE)
+                with torch.no_grad():
+                    action, log_prob = policy.act(obs)
+                actions[a] = action.cpu().numpy()
+                step_data.append((obs, action, log_prob))
+            for a in adv_agents:
+                if adv_policy:
+                    obs = torch.tensor(obs_dict[a], dtype=torch.float32, device=DEVICE)
+                    with torch.no_grad():
+                        action, _ = adv_policy.act(obs)
+                    actions[a] = action.cpu().numpy()
+                else:
+                    actions[a] = environment.action_space(a).sample()
 
-    return env
+            next_obs, rewards, terms, truncs, infos = environment.step(actions)
+            done = all(terms.values()) or len(environment.agents) == 0
+            reward = np.mean([rewards[a] for a in good_agents])
+            rollout.append((step_data, reward, done))
+            obs_dict = next_obs if not done else environment.reset()[0]
 
-# ---------------------------------------------------------
-# Training logic
-# ---------------------------------------------------------
-def train_good(N_good=3, N_adv=2, total_timesteps=1_000_000):
-    print(f"🚀 Training good agents ({N_good}) vs adversaries ({N_adv})")
+        # Flatten rollout
+        states, actions_t, log_probs_old, rewards, dones = [], [], [], [], []
+        for (step_data, r, d) in rollout:
+            for obs, act, logp in step_data:
+                states.append(obs)
+                actions_t.append(act)
+                log_probs_old.append(logp)
+                rewards.append(r)
+                dones.append(float(d))
 
-    base_env = make_env(N_good, N_adv)
-    adv_model = None
-    if os.path.exists(ADVERSARY_MODEL_PATH):
-        print("✅ Using pre-trained adversary model")
-        adv_model = PPO.load(ADVERSARY_MODEL_PATH)
+        states = torch.stack(states)
+        actions_t = torch.stack(actions_t)
+        log_probs_old = torch.stack(log_probs_old)
+        with torch.no_grad():
+            values = policy.critic(states).squeeze(-1)
+        advantages, returns = compute_gae(rewards, values.cpu(), dones)
 
-    env = SharedGoodAgentsEnv(base_env, good_model=adv_model)
-    vec_env = DummyVecEnv([lambda: env])
+        # PPO update
+        for _ in range(UPDATE_EPOCHS):
+            idx = np.random.permutation(len(states))
+            for start in range(0, len(states), BATCH_SIZE):
+                end = start + BATCH_SIZE
+                batch = idx[start:end]
+                log_probs, entropy, values = policy.evaluate(states[batch], actions_t[batch])
+                ratio = (log_probs - log_probs_old[batch]).exp()
+                adv = advantages[batch].to(DEVICE)
+                ret = returns[batch].to(DEVICE)
 
-    model = PPO("MlpPolicy", vec_env, verbose=1)
-    model.learn(total_timesteps=total_timesteps)
+                surr1 = ratio * adv
+                surr2 = torch.clamp(ratio, 1 - CLIP_EPS, 1 + CLIP_EPS) * adv
+                policy_loss = -torch.min(surr1, surr2).mean()
+                value_loss = (values - ret).pow(2).mean()
+                entropy_loss = -entropy.mean()
+                loss = policy_loss + value_coef * value_loss + entropy_coef * entropy_loss
 
-    os.makedirs("models", exist_ok=True)
-    model.save(GOOD_MODEL_PATH)
-    print("✅ Saved good agent model.")
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+        if step % EVAL_FREQ == 0:
+            avg_reward = np.mean(rewards)
+            ep_rewards.append(avg_reward)
+            print(f"Step {step}: Avg Good Reward = {avg_reward:.2f}")
+
+            if trial and len(ep_rewards) >= 5:
+                return np.mean(ep_rewards)  # Optuna objective
+
+    torch.save(policy.state_dict(), TRAINED_GOOD_PATH)
+    print(f"✅ Saved trained good policy at {TRAINED_GOOD_PATH}")
+    return np.mean(ep_rewards) if len(ep_rewards) > 0 else 0.0
+
 
 if __name__ == "__main__":
-    train_good(N_good=3, N_adv=2)
+    use_optuna = True
+    if use_optuna:
+        study = optuna.create_study(direction="maximize")
+        study.optimize(train_good_agent, n_trials=10)
+        print("Best params:", study.best_params)
+    else:
+        train_good_agent()
