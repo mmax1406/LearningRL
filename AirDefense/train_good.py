@@ -7,13 +7,15 @@ import torch.optim as optim
 from torch.distributions import Normal
 import optuna
 from collections import deque
+from helperScripts import *
+from tqdm import trange
 
 # ----------------------------------------------------------
 # CONFIG
 # ----------------------------------------------------------
 ADVERSARY_MODEL_PATH = "adversary_policy.pt"
 TRAINED_GOOD_PATH = "good_policy.pt"
-TOTAL_TIMESTEPS = 200_000
+TOTAL_TIMESTEPS = 1_000
 BATCH_SIZE = 512
 ROLLOUT_STEPS = 2048
 GAMMA = 0.99
@@ -25,56 +27,6 @@ VALUE_COEF = 0.5
 EVAL_FREQ = 5000
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-# ----------------------------------------------------------
-# PPO Actor-Critic Network
-# ----------------------------------------------------------
-class ActorCritic(nn.Module):
-    def __init__(self, obs_dim, act_dim):
-        super().__init__()
-        self.actor = nn.Sequential(
-            nn.Linear(obs_dim, 128), nn.ReLU(),
-            nn.Linear(128, 128), nn.ReLU(),
-            nn.Linear(128, act_dim)
-        )
-        self.critic = nn.Sequential(
-            nn.Linear(obs_dim, 128), nn.ReLU(),
-            nn.Linear(128, 128), nn.ReLU(),
-            nn.Linear(128, 1)
-        )
-
-    def act(self, obs):
-        mean = self.actor(obs)
-        dist = Normal(mean, torch.ones_like(mean) * 0.1)
-        action = dist.sample()
-        log_prob = dist.log_prob(action).sum(dim=-1)
-        return action.clamp(-1, 1), log_prob
-
-    def evaluate(self, obs, actions):
-        mean = self.actor(obs)
-        dist = Normal(mean, torch.ones_like(mean) * 0.1)
-        log_prob = dist.log_prob(actions).sum(dim=-1)
-        entropy = dist.entropy().sum(dim=-1)
-        value = self.critic(obs).squeeze(-1)
-        return log_prob, entropy, value
-
-
-# ----------------------------------------------------------
-# Helper: Compute GAE
-# ----------------------------------------------------------
-def compute_gae(rewards, values, dones, gamma=GAMMA, lam=LAMBDA):
-    advantages = []
-    gae = 0
-    next_value = 0
-    for step in reversed(range(len(rewards))):
-        delta = rewards[step] + gamma * next_value * (1 - dones[step]) - values[step]
-        gae = delta + gamma * lam * (1 - dones[step]) * gae
-        advantages.insert(0, gae)
-        next_value = values[step]
-    returns = [adv + val for adv, val in zip(advantages, values)]
-    return torch.tensor(advantages), torch.tensor(returns)
-
-
 # ----------------------------------------------------------
 # PPO Training Loop (Good Agent)
 # ----------------------------------------------------------
@@ -85,7 +37,8 @@ def train_good_agent(trial=None):
     value_coef = trial.suggest_float("value_coef", 0.1, 1.0) if trial else VALUE_COEF
 
     from intercept_env import env
-    environment = env(N_adversaries=3, M_good=5, width_ratio=3.0)
+    targets = np.random.randint(low=1, high=5)
+    environment = env(N_adversaries=targets, M_good=2*targets, width_ratio=3.0)
 
     obs_dict, _ = environment.reset()
     good_agents = [a for a in environment.agents if "good" in a]
@@ -109,7 +62,7 @@ def train_good_agent(trial=None):
 
     ep_rewards = deque(maxlen=10)
 
-    for step in range(1, TOTAL_TIMESTEPS + 1):
+    for step in trange(1, TOTAL_TIMESTEPS + 1, desc="Training Steps"):
         rollout = []
         obs_dict, _ = environment.reset()
 
@@ -135,7 +88,10 @@ def train_good_agent(trial=None):
             done = all(terms.values()) or len(environment.agents) == 0
             reward = np.mean([rewards[a] for a in good_agents])
             rollout.append((step_data, reward, done))
-            obs_dict = next_obs if not done else environment.reset()[0]
+            # obs_dict = next_obs if not done else environment.reset()[0]
+            if done:
+                break
+            obs_dict = next_obs
 
         # Flatten rollout
         states, actions_t, log_probs_old, rewards, dones = [], [], [], [], []
@@ -190,7 +146,7 @@ def train_good_agent(trial=None):
 
 
 if __name__ == "__main__":
-    use_optuna = True
+    use_optuna = False
     if use_optuna:
         study = optuna.create_study(direction="maximize")
         study.optimize(train_good_agent, n_trials=10)

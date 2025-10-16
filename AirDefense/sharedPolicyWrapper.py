@@ -13,8 +13,11 @@ class SharedPolicyWrapper(gym.Env):
 
         # Assume all agents share the same obs/action spaces
         self.observation_space = self.env.observation_space(self.agents[0])
+        obs_sample = self.env.observation_space(self.agents[0]).sample()
+        self.obs_dim = obs_sample.shape[0]
         self.action_space = self.env.action_space(self.agents[1])
         self.num_agents = len(self.agents)
+        self.obs_buf = np.zeros((self.num_agents, self.obs_dim), dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         obs_dict,_ = self.env.reset(seed=seed, options=options)
@@ -34,7 +37,7 @@ class SharedPolicyWrapper(gym.Env):
         # Check if any agents are done or destroyed
         done = all(terms.values()) or len(self.env.agents) == 0
 
-        # Handle finished case (no remaining agents)
+        # # Handle finished case (no remaining agents)
         if len(next_obs) == 0 or done:
             # Return dummy obs of correct shape
             dummy_obs = np.zeros((1,16)) # same shape as actions or previous obs
@@ -42,8 +45,11 @@ class SharedPolicyWrapper(gym.Env):
             infos["terminated"] = True
             return dummy_obs, reward, True, infos
 
+        # Memory allocation might optimize a bit
+        # for i, a in enumerate(self.agents):
+        #     self.obs_buf[i] = next_obs.get(a, np.zeros(self.obs_dim))
         obs = np.stack([next_obs[a] for a in self.agents if truncs[a]])
         reward = np.array([rewards[a] for a in self.agents])  # shared
 
         # I also need to return good & Bad to know who to train
-        return obs, reward, done, infos
+        return self.obs_buf, reward, done, infos
