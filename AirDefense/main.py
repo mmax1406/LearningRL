@@ -1,12 +1,12 @@
 import os
 import shutil
-from train_good_agent import train_good_agent, TRAINED_GOOD_PATH
-from train_adversary_agent import train_adversary_agent, TRAINED_ADVERSARY_PATH
+from train_good import train_good_agent, TRAINED_GOOD_PATH
+from train_adversary import train_adversary_agent, TRAINED_ADVERSARY_PATH
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-SELF_PLAY_ITERATIONS = 5      # number of alternating training rounds
+SELF_PLAY_ITERATIONS = 1      # number of alternating training rounds
 
 # -----------------------------
 # Self-play loop
@@ -19,19 +19,15 @@ def self_play():
         # Train GOOD agent
         # ---------------------
         print("\n🎯 Training Good Agent...")
-        avg_reward_good = train_good_agent(use_optuna=False)
+        avg_reward_good = train_good_agent(TimeSteps=1_000)
         print(f"✅ Good agent average reward this round: {avg_reward_good:.2f}")
-        if os.path.exists(TRAINED_GOOD_PATH):
-            shutil.copy(TRAINED_GOOD_PATH, f"good_policy_round{i}.pt")
 
         # ---------------------
         # Train ADVERSARY agent
         # ---------------------
         print("\n👾 Training Adversary Agent...")
-        avg_reward_adv = train_adversary_agent(use_optuna=False)
+        avg_reward_adv = train_adversary_agent(TimeSteps=1_000)
         print(f"✅ Adversary agent average reward this round: {avg_reward_adv:.2f}")
-        if os.path.exists(TRAINED_ADVERSARY_PATH):
-            shutil.copy(TRAINED_ADVERSARY_PATH, f"adversary_policy_round{i}.pt")
 
     print("\n==================== SELF-PLAY FINISHED ====================")
 

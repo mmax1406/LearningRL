@@ -10,8 +10,7 @@ from helperScripts import *
 from tqdm import trange
 
 GOOD_MODEL_PATH = "good_policy.pt"
-TRAINED_ADVERSARY_PATH = "adversary_policy.pt"
-TOTAL_TIMESTEPS = 1_000
+TRAINED_ADVERSARY_PATH = "adversary_policy_old.pt"
 BATCH_SIZE = 512
 ROLLOUT_STEPS = 2048
 GAMMA = 0.99
@@ -20,13 +19,13 @@ CLIP_EPS = 0.2
 UPDATE_EPOCHS = 4
 ENTROPY_COEF = 0.01
 VALUE_COEF = 0.5
-EVAL_FREQ = 5000
+EVAL_FREQ = 10
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ----------------------------------------------------------
 # PPO Training Loop (Adversary Agent)
 # ----------------------------------------------------------
-def train_adversary_agent(trial=None):
+def train_adversary_agent(trial=None, TimeSteps = 1_000):
     lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True) if trial else 3e-4
     entropy_coef = trial.suggest_float("entropy_coef", 0.001, 0.05, log=True) if trial else ENTROPY_COEF
     value_coef = trial.suggest_float("value_coef", 0.1, 1.0) if trial else VALUE_COEF
@@ -57,7 +56,7 @@ def train_adversary_agent(trial=None):
 
     ep_rewards = deque(maxlen=10)
 
-    for step in trange(1, TOTAL_TIMESTEPS + 1, desc="Training Steps"):
+    for step in trange(1, TimeSteps + 1, desc="Training Steps"):
         rollout = []
         obs_dict, _ = environment.reset()
 
